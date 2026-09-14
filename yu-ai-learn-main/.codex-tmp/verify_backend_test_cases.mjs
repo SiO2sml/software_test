@@ -1,0 +1,10 @@
+﻿import fs from "node:fs/promises";
+import { FileBlob, SpreadsheetFile } from "@oai/artifact-tool";
+const input = await FileBlob.load("outputs/backend-test-cases/backend_30_test_cases.xlsx");
+const wb = await SpreadsheetFile.importXlsx(input);
+const overview = await wb.inspect({ kind: "table", sheetId: "概览", range: "A5:E12", include: "values,formulas", tableMaxRows: 12, tableMaxCols: 5 });
+console.log(overview.ndjson);
+const table = await wb.inspect({ kind: "table", sheetId: "测试用例", range: "A3:M33", include: "values", tableMaxRows: 31, tableMaxCols: 13, maxChars: 20000 });
+console.log(table.ndjson);
+const errors = await wb.inspect({ kind: "match", searchTerm: "#REF!|#DIV/0!|#VALUE!|#NAME\\?|#N/A|#NUM!|#NULL!|#SPILL!|#CALC!", options: { useRegex: true, maxResults: 100 }, summary: "saved workbook formula error scan" });
+console.log(errors.ndjson);
