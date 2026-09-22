@@ -1,36 +1,4 @@
-"""自动化测试总脚本（三层架构合并版，自包含：结果收集 + 分层表格输出都在本文件）
-
-pytest 三层测试结构：层间解耦，外部依赖全部隔离
-┌──────────────────────────────────────────────────────────────┐
-│ API 层测试   FastAPI 请求与参数校验                            │
-│              不真实启动服务，直接构造 ASGI Request 校验请求头规则 │
-│ 服务层测试   Mock / Stub 隔离依赖                              │
-│              MySQL 连接池、大模型、向量库、任务仓库全部用 Mock 替代│
-│ 单元测试     直接调用函数并断言返回值                            │
-│              parametrize 数据驱动，覆盖全对/全错/空记录等等价类与边界值│
-└──────────────────────────────────────────────────────────────┘
-测试基座：pytest · 参数化 + 夹具
-（异步函数统一经 _run() 同步执行，无需 pytest-asyncio）
-
-结果登记说明：
-  每一条用例都通过 @recorded(...) 装饰器自动登记结果 ——
-  断言通过记 OK，断言失败或抛异常记 FAIL（含异常信息），
-  进程退出时按「API 层 → 服务层 → 单元测试」分组打印完整结果总表，
-  不会出现"跑了但没有结果"的情况。
-
-覆盖模块与用例：
-  API 层   app.core.auth.get_current_user            —— 请求头缺少 Authorization / 携带合法 token
-  服务层   app.services.knowledge_service            —— 超大文件拒绝 / 非法格式拒绝 / 解析切 chunk / 空文档失败
-           app.services.quiz_service（doc_id 分支）  —— 登录校验 / 文档归属 / 状态校验 / 前置校验失败与通过
-  单元测试 app.core.auth                             —— 生成并解析 JWT / 篡改 token / 错误密钥 / 过期 token
-           app.services.knowledge_service._get_extension      —— 扩展名提取
-           app.core.security.check_content                    —— 内容安全校验（参数化 5 组）
-           app.services.scoring_service.compute_score_summary —— 成绩统计（全对/部分对/空记录/参数化回归）
-           app.repositories.knowledge_repository              —— kb_documents 增删改查（mock 连接池）
-
-运行方式：python -m pytest test.py -v -s   （本文件放在 backend/ 或 backend/tests/ 下均可）
-（-s 用于显示每个用例的 [用例N 实际输出]；进程退出时自动输出分层测试结果总表）
-"""
+   
 
 import atexit
 import asyncio
@@ -145,8 +113,7 @@ def _print_result_table():
     print("=" * 110)
 
 
-# 直接运行（python test.py）时，本模块会被 pytest 再以普通模块名导入一次并注册表格，
-# 这里仅在非 __main__ 时注册，避免进程退出时多打一张空表
+
 if __name__ != "__main__":
     atexit.register(_print_result_table)
 
