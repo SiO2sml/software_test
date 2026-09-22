@@ -19,6 +19,9 @@ WX_CODE2SESSION_URL = "https://api.weixin.qq.com/sns/jscode2session"
 async def wx_code_to_openid(code: str) -> str:
     """调用微信 jscode2session 获取 openid。"""
     settings = get_settings()
+    if settings.wechat_mock_openid:
+        logger.warning("wx_login_mock_enabled", mock_openid=settings.wechat_mock_openid)
+        return settings.wechat_mock_openid
     if not settings.wechat_app_id or not settings.wechat_app_secret:
         raise AuthenticationError("微信登录未配置")
 

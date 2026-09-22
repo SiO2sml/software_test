@@ -1,5 +1,3 @@
-   
-
 import atexit
 import asyncio
 import functools
@@ -10,8 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# 自动探测项目根目录（app 包所在目录）并加入模块搜索路径，
-# 无论本文件放在 backend/ 还是 backend/tests/ 下、在任意目录执行 pytest 都能找到 app 模块
+
 _HERE = Path(__file__).resolve().parent
 for _candidate in (_HERE, _HERE.parent):
     if (_candidate / "app").is_dir() and str(_candidate) not in sys.path:
@@ -32,9 +29,6 @@ from app.services.knowledge_service import _get_extension, _process_document, ha
 from app.services.scoring_service import compute_score_summary
 
 
-# ======================================================================
-# 测试结果收集（本文件自包含，无需修改 conftest.py）
-# ======================================================================
 
 RESULTS = []
 LAYER_ORDER = ["API 层测试", "服务层测试", "单元测试"]
@@ -113,7 +107,8 @@ def _print_result_table():
     print("=" * 110)
 
 
-
+# 直接运行（python test.py）时，本模块会被 pytest 再以普通模块名导入一次并注册表格，
+# 这里仅在非 __main__ 时注册，避免进程退出时多打一张空表
 if __name__ != "__main__":
     atexit.register(_print_result_table)
 

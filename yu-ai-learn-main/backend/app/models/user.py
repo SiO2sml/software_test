@@ -32,7 +32,7 @@ class UserProfile(BaseModel):
 
 
 class UpdateProfileRequest(BaseModel):
-    nickname: Optional[str] = Field(default=None, max_length=100)
+    nickname: Optional[str] = Field(default=None, min_length=1, max_length=100)
     avatar_url: Optional[str] = Field(default=None, max_length=500)
 
 

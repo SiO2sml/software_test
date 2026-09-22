@@ -37,3 +37,6 @@ build/
 # WeChat
 project.private.config.json
 temp_debug.png
+.pytest_cache/
+.codex-tmp/
+.pytest_tmp/

@@ -1,34 +1,16 @@
-﻿
+# -*- coding: utf-8 -*-
+"""报告接口安全缺陷回归验收。"""
+from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
-
-import pytest
-
-from app.models.quiz import AnswerRecord, Question, QuestionOption
-from app.models.report import ReportGenerateRequest, ReportOutput
-from app.core.exceptions import ReportGenerationError
-from app.services.report_service import handle_report_generate
+import app.services.report_service as report_service
+from app.models.report import ReportOutput
+from assertions import assert_error, assert_success
+from conftest import CustomClient, auth_headers, make_quiz_output
 
 
-def _question(question_id: str = "q1", answer: str = "A") -> Question:
-    return Question(
-        id=question_id,
-        type="single",
-        stem="标准答案是什么？",
-        options=[
-            QuestionOption(key="A", text="正确答案"),
-            QuestionOption(key="X", text="伪造选项"),
-        ],
-        answer=[answer],
-        explanation="A 是标准答案。",
-        knowledge_point="安全测试",
-        difficulty="easy",
-    )
-
-
-def _report_output() -> ReportOutput:
+def make_report_output(accuracy: int = 0) -> ReportOutput:
     return ReportOutput(
-        accuracy=0,
+        accuracy=accuracy,
         mastered_points=[],
         weak_points=["安全测试"],
         three_line_summary=["第一句", "第二句", "第三句"],
@@ -37,119 +19,113 @@ def _report_output() -> ReportOutput:
     )
 
 
-@pytest.mark.asyncio
-async def test_tc_be_016_report_score_must_be_recalculated_on_server():
-    """TC-BE-016：后端必须忽略客户端 is_correct 并按服务端答案重新判分。
-
-    问题描述：报告服务当前直接统计客户端上传的 is_correct。
-    预期结果：selected_answers 错误时，correct=0，XP 只结算完成奖励 10。
-    当前实际：客户端伪造 is_correct=true 后，correct=5，XP 被结算为 20。
-    """
-    questions = [_question(f"q{i}") for i in range(1, 6)]
-    forged_records = [
-        AnswerRecord(
-            question_id=question.id,
-            selected_answers=["X"],
-            is_correct=True,
-            duration_ms=100,
-        )
-        for question in questions
+def sample_report_request(question_count: int = 5) -> dict:
+    quiz = make_quiz_output(question_count)
+    records = [
+        {
+            "question_id": question.id,
+            "selected_answers": ["B"],
+            "is_correct": True,
+            "duration_ms": 100,
+        }
+        for question in quiz.questions
     ]
-    req = ReportGenerateRequest(
-        quiz_id="quiz_server_regrade",
-        topic="服务端判分测试",
-        questions=questions,
-        answer_records=forged_records,
-    )
-    server_session = {
-        "quiz_id": req.quiz_id,
-        "user_id": 1,
-        "questions": [question.model_dump() for question in questions],
+    return {
+        "quiz_id": "quiz_server_regrade",
+        "topic": "服务端判分测试",
+        "questions": [question.model_dump() for question in quiz.questions],
+        "answer_records": records,
     }
 
-    with patch(
-        "app.services.report_service.generate_report",
-        new=AsyncMock(return_value=_report_output()),
-    ), patch(
-        "app.services.report_service.quiz_repository.get_quiz_detail",
-        new=AsyncMock(return_value=server_session),
-    ) as get_session, patch(
-        "app.services.report_service.quiz_repository.save_answer_record",
-        new=AsyncMock(),
-    ) as save_answer_record, patch(
-        "app.services.report_service.quiz_repository.save_report",
-        new=AsyncMock(),
-    ), patch(
-        "app.services.report_service.user_repository.add_user_xp",
-        new=AsyncMock(),
-    ) as add_user_xp:
-        await handle_report_generate(req, user_id=1)
 
-    actual_correct = save_answer_record.await_args.kwargs["correct_count"]
-    actual_accuracy = save_answer_record.await_args.kwargs["accuracy"]
-    actual_xp = add_user_xp.await_args.args[1]
-    assert get_session.await_count == 1, (
-        "服务端未读取闯关会话重新判分；"
-        f"actual_correct={actual_correct}, "
-        f"actual_accuracy={actual_accuracy}, actual_xp={actual_xp}"
-    )
-    get_session.assert_awaited_once_with(req.quiz_id, 1)
-    assert actual_correct == 0
-    assert actual_accuracy == 0
-    add_user_xp.assert_awaited_once_with(1, 10)
+def test_TC050_report_score_must_be_recalculated_on_server(monkeypatch):
+    """客户端伪造 is_correct 时，后端必须按服务端标准答案重新判分。"""
+    payload = sample_report_request()
+    captured = {}
 
+    async def get_quiz_detail(quiz_id, user_id):
+        captured["session_lookup"] = (quiz_id, user_id)
+        return {
+            "quiz_id": quiz_id,
+            "user_id": user_id,
+            "title": payload["topic"],
+            "questions": payload["questions"],
+        }
 
-@pytest.mark.asyncio
-async def test_tc_be_017_report_must_reject_quiz_owned_by_another_user():
-    """TC-BE-017：报告接口必须校验 quiz_id 归属当前用户。
+    async def success_report(**kwargs):
+        captured["report_answer_records"] = kwargs["answer_records"]
+        return make_report_output(accuracy=99)
 
-    问题描述：报告服务未查询 quiz_sessions，也不校验 quiz_id 是否属于当前用户。
-    预期结果：用户 2 向用户 1 的 quiz_id 提交报告时抛业务异常且不写库。
-    当前实际：服务直接以用户 2 身份向受害者 quiz_id 写入记录并给用户 2 加 XP。
-    """
-    req = ReportGenerateRequest(
-        quiz_id="quiz_owned_by_user_1",
-        topic="越权测试",
-        questions=[_question()],
-        answer_records=[
-            AnswerRecord(
-                question_id="q1",
-                selected_answers=["A"],
-                is_correct=True,
-                duration_ms=100,
+    async def save_answer_record(**kwargs):
+        captured["answer_record"] = kwargs
+
+    async def save_report(**kwargs):
+        captured["report"] = kwargs
+
+    async def add_user_xp(user_id, xp_gain):
+        captured["xp"] = (user_id, xp_gain)
+
+    monkeypatch.setattr(report_service, "generate_report", success_report)
+    monkeypatch.setattr(report_service.quiz_repository, "get_quiz_detail", get_quiz_detail)
+    monkeypatch.setattr(report_service.quiz_repository, "save_answer_record", save_answer_record)
+    monkeypatch.setattr(report_service.quiz_repository, "save_report", save_report)
+    monkeypatch.setattr(report_service.user_repository, "add_user_xp", add_user_xp)
+
+    with CustomClient() as client:
+        data = assert_success(
+            client.post(
+                "/api/v1/report/generate",
+                headers=auth_headers(5001),
+                json=payload,
             )
-        ],
-    )
+        )
 
-    with patch(
-        "app.services.report_service.generate_report",
-        new=AsyncMock(return_value=_report_output()),
-    ), patch(
-        "app.services.report_service.quiz_repository.get_quiz_detail",
-        new=AsyncMock(return_value=None),
-    ) as get_session, patch(
-        "app.services.report_service.quiz_repository.save_answer_record",
-        new=AsyncMock(),
-    ) as save_answer_record, patch(
-        "app.services.report_service.quiz_repository.save_report",
-        new=AsyncMock(),
-    ) as save_report, patch(
-        "app.services.report_service.user_repository.add_user_xp",
-        new=AsyncMock(),
-    ) as add_user_xp:
-        try:
-            await handle_report_generate(req, user_id=2)
-        except ReportGenerationError as exc:
-            assert "无权" in str(exc) or "不存在" in str(exc)
-        else:
-            pytest.fail(
-                "未拒绝越权 quiz_id；"
-                f"actual_save_answer_record_awaits={save_answer_record.await_count}, "
-                f"actual_save_report_awaits={save_report.await_count}, "
-                f"actual_add_xp_awaits={add_user_xp.await_count}"
-            )
+    assert captured["session_lookup"] == (payload["quiz_id"], 5001)
+    assert all(record.is_correct is False for record in captured["report_answer_records"])
+    assert captured["answer_record"]["correct_count"] == 0
+    assert captured["answer_record"]["accuracy"] == 0
+    assert captured["xp"] == (5001, 10)
+    assert data["accuracy"] == 0
 
-    get_session.assert_awaited_once_with(req.quiz_id, 2)
-    save_answer_record.assert_not_awaited()
-    save_report.assert_not_awaited()
-    add_user_xp.assert_not_awaited()
+
+def test_TC051_report_must_reject_quiz_owned_by_another_user(monkeypatch):
+    """报告接口必须校验 quiz_id 归属当前用户，越权时不得调用模型或写库。"""
+    payload = sample_report_request(question_count=1)
+    payload["quiz_id"] = "quiz_owned_by_user_1"
+    captured = {"session_lookups": []}
+
+    async def missing_detail(quiz_id, user_id):
+        captured["session_lookups"].append((quiz_id, user_id))
+        return None
+
+    async def forbidden_report(**kwargs):
+        raise AssertionError("越权请求不应调用报告模型")
+
+    async def forbidden_save_answer_record(**kwargs):
+        raise AssertionError("越权请求不应保存答题记录")
+
+    async def forbidden_save_report(**kwargs):
+        raise AssertionError("越权请求不应保存报告")
+
+    async def forbidden_add_user_xp(user_id, xp_gain):
+        raise AssertionError("越权请求不应增加经验值")
+
+    monkeypatch.setattr(report_service, "generate_report", forbidden_report)
+    monkeypatch.setattr(report_service.quiz_repository, "get_quiz_detail", missing_detail)
+    monkeypatch.setattr(report_service.quiz_repository, "save_answer_record", forbidden_save_answer_record)
+    monkeypatch.setattr(report_service.quiz_repository, "save_report", forbidden_save_report)
+    monkeypatch.setattr(report_service.user_repository, "add_user_xp", forbidden_add_user_xp)
+
+    with CustomClient() as client:
+        body = assert_error(
+            client.post(
+                "/api/v1/report/generate",
+                headers=auth_headers(5002),
+                json=payload,
+            ),
+            500,
+            5002,
+        )
+
+    assert captured["session_lookups"] == [(payload["quiz_id"], 5002)]
+    assert "无权" in body["message"] or "不存在" in body["message"]

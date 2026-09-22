@@ -67,3 +67,38 @@ class CustomClient:
 
     def __exit__(self, *args: Any) -> None:
         self.client.__exit__(*args)
+
+# ---- pytest 测试结果明细 ----
+
+_TEST_RESULTS: dict[str, tuple[str, float]] = {}
+
+
+def pytest_sessionstart(session):
+    """每次运行测试前清空上一轮结果。"""
+    _TEST_RESULTS.clear()
+
+
+def pytest_runtest_logreport(report):
+    """记录每条测试用例的最终结果，跳过成功的 setup/teardown 阶段。"""
+    if report.when == "setup" and report.passed:
+        return
+    if report.when == "teardown" and report.nodeid in _TEST_RESULTS:
+        return
+
+    if report.skipped:
+        status = "SKIP"
+    elif report.failed:
+        status = "FAIL" if report.when == "call" else f"ERROR({report.when})"
+    else:
+        status = "PASS"
+    _TEST_RESULTS[report.nodeid] = (status, report.duration)
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """测试结束后输出每条用例的结果。"""
+    if not _TEST_RESULTS:
+        return
+
+    terminalreporter.write_sep("=", "TEST CASE RESULTS")
+    for index, (nodeid, (status, duration)) in enumerate(_TEST_RESULTS.items(), start=1):
+        terminalreporter.write_line(f"{index:02d}. {status:<13} {duration:>6.2f}s  {nodeid}")

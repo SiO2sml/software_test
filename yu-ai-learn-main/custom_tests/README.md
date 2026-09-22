@@ -1,6 +1,6 @@
 # custom_tests — 独立自动化验收测试
 
-本目录包含一套独立生成的接口/服务级自动化测试（40 条），不依赖、不引用项目原有测试脚本。测试通过 `FastAPI TestClient` 执行路由层用例，并通过 monkeypatch 隔离外部 MySQL、LLM、Tavily、DashScope、Chroma 和 COS，因此在无外部依赖环境下可重复运行。
+本目录包含一套独立生成的接口/服务级自动化测试（42 条），不依赖、不引用项目原有测试脚本。测试通过 `FastAPI TestClient` 执行路由层用例，并通过 monkeypatch 隔离外部 MySQL、LLM、Tavily、DashScope、Chroma 和 COS，因此在无外部依赖环境下可重复运行。
 
 ## 目录放置要求
 
@@ -31,7 +31,7 @@ pip install pytest
 python -m pytest custom_tests -q --disable-warnings
 ```
 
-运行结束输出 `40 passed` 即全部通过；退出码 0 表示成功。
+运行结束会输出 `TEST CASE RESULTS` 明细表，逐条显示每个测试用例的 `PASS`、`FAIL`、`ERROR` 或 `SKIP`、耗时和完整用例名；最后输出 `42 passed` 即全部通过；退出码 0 表示成功。
 
 ### 运行单条用例（可选）
 
@@ -63,4 +63,4 @@ python -m pytest "custom_tests/test_user_api.py::test_TC044A_update_profile_reje
 - 实际结果：HTTP 200 且 `code=0`，昵称被更新为空字符串。
 - 原因：`UpdateProfileRequest.nickname` 只限制 `max_length=100`，未限制最小长度。
 - 修复：为 `nickname` 增加 `min_length=1`，空字符串在参数校验阶段返回 422。
-- 修复验证：回归用例 `test_TC044A_update_profile_rejects_empty_nickname` 修复前失败、修复后通过；全量 40 条用例通过。
+- 修复验证：回归用例 `test_TC044A_update_profile_rejects_empty_nickname` 修复前失败、修复后通过；全量 42 条用例通过。

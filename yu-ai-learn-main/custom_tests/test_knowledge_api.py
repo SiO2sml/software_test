@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+import tempfile
+from pathlib import Path
 
 import app.services.knowledge_service as knowledge_service
 from assertions import assert_error, assert_success, assert_validation_error
@@ -141,32 +143,38 @@ def test_TC056_knowledge_document_delete_missing_returns_4001(monkeypatch):
     assert "文档不存在" in body["message"]
 
 
-def test_TC057_knowledge_document_delete_cleans_vectors_file_and_record(monkeypatch, tmp_path):
-    settings = knowledge_service.get_settings()
-    monkeypatch.setattr(settings, "kb_upload_dir", str(tmp_path), raising=False)
-    file_path = tmp_path / "doc_ready.txt"
-    file_path.write_text("content", encoding="utf-8")
-    calls = []
+def test_TC057_knowledge_document_delete_cleans_vectors_file_and_record(monkeypatch):
+    temp_root = Path(".codex-tmp")
+    temp_root.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix="TC057_", dir=temp_root, ignore_cleanup_errors=True
+    ) as temp_dir:
+        tmp_path = Path(temp_dir)
+        settings = knowledge_service.get_settings()
+        monkeypatch.setattr(settings, "kb_upload_dir", str(tmp_path), raising=False)
+        file_path = tmp_path / "doc_ready.txt"
+        file_path.write_text("content", encoding="utf-8")
+        calls = []
 
-    async def existing_document(doc_id, user_id):
-        return {"doc_id": doc_id, "file_type": "txt"}
+        async def existing_document(doc_id, user_id):
+            return {"doc_id": doc_id, "file_type": "txt"}
 
-    def delete_vectors(user_id, doc_id):
-        calls.append(("vector", user_id, doc_id))
+        def delete_vectors(user_id, doc_id):
+            calls.append(("vector", user_id, doc_id))
 
-    async def delete_document(doc_id, user_id):
-        calls.append(("db", doc_id, user_id))
+        async def delete_document(doc_id, user_id):
+            calls.append(("db", doc_id, user_id))
 
-    monkeypatch.setattr(knowledge_service.knowledge_repository, "get_document", existing_document)
-    monkeypatch.setattr(knowledge_service.vector_store_service, "delete_document_vectors", delete_vectors)
-    monkeypatch.setattr(knowledge_service.knowledge_repository, "delete_document", delete_document)
-    with CustomClient() as client:
-        assert_success(
-            client.delete("/api/v1/knowledge/documents/doc_ready", headers=auth_headers(5007))
-        )
-    assert ("vector", 5007, "doc_ready") in calls
-    assert ("db", "doc_ready", 5007) in calls
-    assert not file_path.exists()
+        monkeypatch.setattr(knowledge_service.knowledge_repository, "get_document", existing_document)
+        monkeypatch.setattr(knowledge_service.vector_store_service, "delete_document_vectors", delete_vectors)
+        monkeypatch.setattr(knowledge_service.knowledge_repository, "delete_document", delete_document)
+        with CustomClient() as client:
+            assert_success(
+                client.delete("/api/v1/knowledge/documents/doc_ready", headers=auth_headers(5007))
+            )
+        assert ("vector", 5007, "doc_ready") in calls
+        assert ("db", "doc_ready", 5007) in calls
+        assert not file_path.exists()
 
 
 def test_TC058_quiz_with_ready_doc_uses_rag_context(monkeypatch):

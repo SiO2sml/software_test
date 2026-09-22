@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     image_gen_max_concurrency: int = 5
 
     # 出题每日限额（每用户每天可创建的出题任务数上限，防止恶意刷接口产生 API 费用）
-    quiz_gen_daily_limit: int = 50
+    quiz_gen_daily_limit: int = 10
 
     # 腾讯云 COS（用于持久化存储 AI 生成的题目配图）
     cos_secret_id: str = ""
@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     # 微信小程序
     wechat_app_id: str = ""
     wechat_app_secret: str = ""
+    # 本地模拟登录 openid：非空时跳过微信 jscode2session，直接使用该身份登录
+    wechat_mock_openid: str = ""
 
     # MySQL
     mysql_host: str = "localhost"

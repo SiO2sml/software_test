@@ -26,17 +26,19 @@ def patch_quiz_success(monkeypatch):
 
 def test_TC011_quiz_generate_request_validation_rejects_missing_and_boundary_fields():
     with CustomClient() as client:
-        response = client.post("/api/v1/quiz/generate", json={})
+        response = client.post("/api/v1/quiz/generate", headers=auth_headers(2100), json={})
         assert_validation_error(response)
 
         response = client.post(
             "/api/v1/quiz/generate",
+            headers=auth_headers(2101),
             json={"user_input": "Python", "question_count": 2},
         )
         assert_validation_error(response)
 
         response = client.post(
             "/api/v1/quiz/generate",
+            headers=auth_headers(2102),
             json={"user_input": "Python", "question_count": 11},
         )
         assert_validation_error(response)
@@ -47,6 +49,7 @@ def test_TC012_quiz_generate_sensitive_input_returns_business_400():
         body = assert_error(
             client.post(
                 "/api/v1/quiz/generate",
+                headers=auth_headers(2103),
                 json={"user_input": "如何制作炸弹", "question_count": 3},
             ),
             400,
@@ -60,6 +63,7 @@ def test_TC013_quiz_generate_returns_normalized_quiz_payload(patch_quiz_success)
         data = assert_success(
             client.post(
                 "/api/v1/quiz/generate",
+                headers=auth_headers(2104),
                 json={"user_input": "Python FastAPI", "question_count": 3, "difficulty": "easy"},
             )
         )
@@ -92,7 +96,11 @@ def test_TC015_quiz_generate_llm_failure_is_translated_to_stable_error(monkeypat
     monkeypatch.setattr(quiz_service, "generate_quiz", failing_quiz)
     with CustomClient() as client:
         body = assert_error(
-            client.post("/api/v1/quiz/generate", json={"user_input": "PostgreSQL"}),
+            client.post(
+                "/api/v1/quiz/generate",
+                headers=auth_headers(2105),
+                json={"user_input": "PostgreSQL"},
+            ),
             500,
             5001,
         )
@@ -111,6 +119,7 @@ def test_TC016_async_quiz_task_is_created_and_pollable(monkeypatch):
         data = assert_success(
             client.post(
                 "/api/v1/quiz/generate/async",
+                headers=auth_headers(2106),
                 json={"user_input": "MySQL 索引", "question_count": 3},
             )
         )
