@@ -1,4 +1,6 @@
-模块一，测试文件放在backend文件夹下，直接运行test.py即可
+模块一测试文件放在backend文件夹下，
+运行环境参考requestments.txt文件
+直接运行test.py即可
 
 
 
